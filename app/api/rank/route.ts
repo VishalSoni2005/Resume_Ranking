@@ -1,8 +1,10 @@
+
+
 import { type NextRequest, NextResponse } from "next/server";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import dotenv from "dotenv";
-import pdfParse from "pdf-parse";
 dotenv.config();
+import * as pdfjsLib from "pdfjs-dist";
 
 if (!process.env.GOOGLE_API_KEY)
   throw new Error("Missing Google API key in environment variables");
@@ -52,10 +54,26 @@ export async function POST(request: NextRequest) {
   }
 }
 
+// async function extractTextFromFile(file: File): Promise<string> {
+//   const buffer = Buffer.from(await file.arrayBuffer()); // ✅ Convert arrayBuffer to Node.js Buffer
+//   const data = await pdfParse(buffer); // ✅ Use pdf-parse to extract text
+//   return data.text;
+// }
+
 async function extractTextFromFile(file: File): Promise<string> {
-  const buffer = Buffer.from(await file.arrayBuffer()); // ✅ Convert arrayBuffer to Node.js Buffer
-  const data = await pdfParse(buffer); // ✅ Use pdf-parse to extract text
-  return data.text;
+  const arrayBuffer = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+
+  let text = "";
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i);
+    const content = await page.getTextContent();
+    const strings = content.items.map((item: any) => item.str).join(" ");
+    text += strings + "\n";
+  }
+  console.log(text);
+  
+  return text;
 }
 
 async function analyzeCV(
@@ -74,28 +92,42 @@ async function analyzeCV(
     .filter(Boolean);
 
   try {
-    const prompt = `
-You are a professional CV analyzer. Analyze the following CV text for keyword matches and provide a comprehensive evaluation.
+ const prompt = `
+You are an expert CV evaluator. Analyze the provided CV text and assess how well it matches the given required and optional keywords.
 
-Required keywords: ${requiredKeywords.join(", ")}
-Optional keywords: ${optionalKeywords.join(", ")}
+Required Keywords:
+${requiredKeywords.join(", ")}
+
+Optional Keywords:
+${optionalKeywords.join(", ")}
 
 CV Text:
 ${cvText.substring(0, 30000)}
 
-Return your response as a valid JSON object with these exact fields:
+Instructions:
+1. Analyze the CV text to identify which required and optional keywords are present.
+2. Highlight key strengths and weaknesses based on keyword presence and skill coverage.
+3. Provide an overall analysis based on the evaluation.
+
+Output Format:
+Return ONLY a valid JSON object with EXACTLY these fields:
 {
-  "score": 0.85,
-  "matchedRequiredKeywords": ["React", "TypeScript"],
-  "matchedOptionalKeywords": ["AWS", "Docker"],
-  "missingRequiredKeywords": ["GraphQL"],
-  "strengths": "Strong experience with modern frontend frameworks...",
-  "weaknesses": "Limited experience with cloud infrastructure...",
-  "overallAnalysis": "This candidate shows strong frontend skills but lacks..."
+  "score": number (between 0 and 1),
+  "matchedRequiredKeywords": string[],
+  "matchedOptionalKeywords": string[],
+  "missingRequiredKeywords": string[],
+  "strengths": string,
+  "weaknesses": string,
+  "overallAnalysis": string
 }
 
-IMPORTANT: Only return valid JSON, no additional text or markdown.
-    `.trim();
+Ensure:
+- The JSON is valid and contains no extra text or formatting.
+- The score is a float between 0 and 1 indicating how well the CV matches the required criteria.
+- All array fields must only include keywords from the input lists.
+- Provide thoughtful insights in "strengths", "weaknesses", and "overallAnalysis".
+- Do not include markdown or commentary—return ONLY the raw JSON object.
+`.trim();
 
     const result = await model.generateContent(prompt);
     const response = await result.response;
