@@ -1,10 +1,14 @@
-
-
 import { type NextRequest, NextResponse } from "next/server";
 import { GoogleGenerativeAI } from "@google/generative-ai";
+
 import dotenv from "dotenv";
 dotenv.config();
-import * as pdfjsLib from "pdfjs-dist";
+// @ts-ignore
+// import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf";
+// Use this only in server-side environments (not browser)
+import pdfjsLib from "pdfjs-dist/legacy/build/pdf.js";
+
+
 
 if (!process.env.GOOGLE_API_KEY)
   throw new Error("Missing Google API key in environment variables");
@@ -12,10 +16,27 @@ if (!process.env.GOOGLE_API_KEY)
 const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY);
 const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
 
+// export async function GET(request: NextRequest) {
+//   return NextResponse.json({ message: "Hello, world!" });
+// }
+
 export async function POST(request: NextRequest) {
   try {
+
+
+
     const formData = await request.formData();
-    const files = formData.getAll("files") as File[];
+
+    for (const entry of formData.entries()) {
+      console.log(entry[0], entry[1]);
+    }
+
+
+    const files = formData.getAll("files") as File[]; //! here we extract { files } from request body
+
+    console.log("File form frontend: ", files);
+    
+
     const requiredKeywords = formData.get("requiredKeywords") as string;
     const optionalKeywords = (formData.get("optionalKeywords") as string) || "";
 
@@ -25,6 +46,9 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+
+    // console.log("requiredKeywords: ", requiredKeywords);
+    
 
     const results = await Promise.all(
       files.map(async (file) => {
@@ -45,6 +69,10 @@ export async function POST(request: NextRequest) {
     );
 
     return NextResponse.json({ results });
+
+
+
+
   } catch (error) {
     console.error("Error processing CVs:", error);
     return NextResponse.json(
@@ -53,6 +81,8 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+
+
 
 // async function extractTextFromFile(file: File): Promise<string> {
 //   const buffer = Buffer.from(await file.arrayBuffer()); // ✅ Convert arrayBuffer to Node.js Buffer
@@ -71,8 +101,6 @@ async function extractTextFromFile(file: File): Promise<string> {
     const strings = content.items.map((item: any) => item.str).join(" ");
     text += strings + "\n";
   }
-  console.log(text);
-  
   return text;
 }
 

@@ -41,7 +41,7 @@ export default function Home() {
     setIsLoading(true);
 
     try {
-      const formData = new FormData();
+      const formData = new FormData(); // created a from data to send tot server
 
       files.forEach((file) => {
         formData.append("files", file);
